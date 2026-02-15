@@ -1,106 +1,347 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Snake</title>
-<style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;position:fixed;-webkit-overflow-scrolling:touch}
-body{font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#111;color:#eee;touch-action:none}
-#a{display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px;max-width:100vw;max-height:100vh}
-h1{margin:0;font-size:24px}
-#b{background:#222;padding:8px;border-radius:8px;touch-action:none}
-canvas{display:block;background:#000;max-width:calc(100vw - 32px);max-height:calc(100vh - 200px);touch-action:none}
-#c{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center}
-button{padding:12px 16px;border-radius:8px;border:none;cursor:pointer;background:#2ecc71;color:#fff;font-size:16px;font-weight:500;touch-action:manipulation}
-button:active{background:#27ae60}
-#s{font-size:18px;font-weight:500}
-#i{font-size:14px;color:#888;text-align:center}
-@media (max-width:480px){canvas{width:90vmin!important;height:90vmin!important}h1{font-size:20px}}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2D Sidescroller - Mobile</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      display: flex; 
+      flex-direction: column;
+      justify-content: center; 
+      align-items: center; 
+      width: 100vw; 
+      height: 100vh; 
+      background: #333; 
+      font-family: Arial, sans-serif; 
+      overflow: hidden; 
+    }
+    #game-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    canvas { 
+      border: 3px solid #fff; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%); 
+      display: block; 
+      max-width: 100vw; 
+      max-height: 70vh; 
+      width: auto; 
+      height: auto; 
+      touch-action: none; 
+    }
+    #controls {
+      display: flex;
+      gap: 20px;
+      margin-top: 10px;
+      width: 100%;
+      max-width: 800px;
+      padding: 10px;
+    }
+    .btn {
+      flex: 1;
+      height: 100px;
+      font-size: 24px;
+      font-weight: bold;
+      border: 3px solid #fff;
+      border-radius: 15px;
+      color: #fff;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+      transition: transform 0.1s, opacity 0.1s;
+    }
+    .btn:active {
+      transform: scale(0.95);
+      opacity: 0.8;
+    }
+    #jump-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    #shield-btn {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    #i { 
+      position: absolute; 
+      top: 10px; 
+      left: 50%; 
+      transform: translateX(-50%);
+      color: #fff; 
+      font-size: 12px; 
+      z-index: 10;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-<div id="a">
-<h1>Snake</h1>
-<div id="b"><canvas id="g" width="400" height="400"></canvas></div>
-<div id="c"><button id="t">Start / Restart</button><span id="s">Score: 0</span></div>
-<div id="i">Swipe to control</div>
-</div>
-<script>
-(()=>{
-let c=g.getContext('2d'),T=20,W=g.width/T,H=g.height/T,
-S,D,F,R,O,L,p=[0,0,0,0],M=30,
-k={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};
+  <div id="i"><p>Keyboard: ↑ Jump | D Shield | R Restart</p></div>
+  <div id="game-container">
+    <canvas id="c" width="800" height="600"></canvas>
+    <div id="controls">
+      <button id="jump-btn" class="btn">JUMP ↑</button>
+      <button id="shield-btn" class="btn">SHIELD 🛡️</button>
+    </div>
+  </div>
+  <script>
+const W = 800, H = 600, PY = H - 150, CY = 50, G = 0.6, PW = 60, PH = 150, JP = 15, AS = 2, GW = 180, GMD = 450, GMX = 750, CSI = 100, RCI = 500, PD = 90;
+const cn = document.getElementById('c'), cx = cn.getContext('2d');
+const p = { x: 500, y: PY - PH, w: PW, h: PH, vy: 0, vx: 0, j: !1, g: !1, ph: !1, pt: 0, jr: 2, fc: 0 };
+const k = {};
+let go = !1, got = 0, s = 0, cs = AS, mx = 2800, nrx = 1800, ngx = 1000, e = [], gp = [];
 
-function Q(){
-S=[{x:W/2|0,y:H/2|0}];
-D={x:1,y:0};
-for(F={x:Math.random()*W|0,y:Math.random()*H|0};S.some(v=>v.x==F.x&&v.y==F.y);)
-F={x:Math.random()*W|0,y:Math.random()*H|0};
-O=R=0;
-s.textContent='Score: 0';
-L&&clearInterval(L);
-L=setInterval(N,100);
+// Button controls
+const jumpBtn = document.getElementById('jump-btn');
+const shieldBtn = document.getElementById('shield-btn');
+
+jumpBtn.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (!go && p.jr > 0) {
+    p.vy = -JP;
+    p.j = 1;
+    p.g = 0;
+    p.jr--;
+  }
+});
+
+jumpBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!go && p.jr > 0) {
+    p.vy = -JP;
+    p.j = 1;
+    p.g = 0;
+    p.jr--;
+  }
+});
+
+shieldBtn.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (!go && !p.ph) {
+    p.ph = 1;
+    p.pt = PD;
+  }
+});
+
+shieldBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (!go && !p.ph) {
+    p.ph = 1;
+    p.pt = PD;
+  }
+});
+
+// Keyboard controls
+window.addEventListener('keydown', (e) => {
+  k[e.key] = 1;
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!go && p.jr > 0) p.vy = -JP, p.j = 1, p.g = 0, p.jr--;
+  }
+  if (e.key === 'd' || e.key === 'D') {
+    e.preventDefault();
+    if (!go && !p.ph) p.ph = 1, p.pt = PD;
+  }
+  if (e.key === 'r' && go) location.reload();
+});
+
+window.addEventListener('keyup', (e) => { k[e.key] = 0; });
+
+// Canvas click for restart button
+cn.addEventListener('click', (e) => {
+  if (go) {
+    const rect = cn.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (W / rect.width);
+    const my = (e.clientY - rect.top) * (H / rect.height);
+    if (mx >= W / 2 - 100 && mx <= W / 2 + 100 && my >= H / 2 + 50 && my <= H / 2 + 110) location.reload();
+  }
+});
+
+cn.addEventListener('touchend', (e) => {
+  if (go) {
+    const rect = cn.getBoundingClientRect();
+    const touch = e.changedTouches[0];
+    const mx = (touch.clientX - rect.left) * (W / rect.width);
+    const my = (touch.clientY - rect.top) * (H / rect.height);
+    if (mx >= W / 2 - 100 && mx <= W / 2 + 100 && my >= H / 2 + 50 && my <= H / 2 + 110) location.reload();
+  }
+});
+
+function ce(x, t = 'g') {
+  return {
+    x: x, by: (CY + PY) / 2, y: 0, r: 20, t: t, c: t === 'r' ? '#F00' : '#FD7',
+    fp: Math.random() * Math.PI * 2, fs: t === 'r' ? .05 : .08, fr: (PY - CY) / 2 - 40
+  };
 }
 
-function N(){
-let h={x:(S[0].x+D.x+W)%W,y:(S[0].y+D.y+H)%H};
-if(S.some(v=>v.x==h.x&&v.y==h.y)){
-clearInterval(L);
-c.fillStyle='rgba(0,0,0,.6)';
-c.fillRect(0,0,400,400);
-c.fillStyle='#fff';
-c.font='20px sans-serif';
-c.textAlign='center';
-c.fillText('Game Over — Score: '+O,200,200);
-return;
-}
-S.unshift(h);
-if(h.x==F.x&&h.y==F.y){
-s.textContent='Score: '+ ++O;
-for(F={x:Math.random()*W|0,y:Math.random()*H|0};S.some(v=>v.x==F.x&&v.y==F.y);)
-F={x:Math.random()*W|0,y:Math.random()*H|0};
-}else S.pop();
-c.clearRect(0,0,400,400);
-c.fillStyle='#e74c3c';
-c.fillRect(F.x*T,F.y*T,T,T);
-c.fillStyle='#2ecc71';
-S.forEach(v=>c.fillRect(v.x*T+1,v.y*T+1,T-2,T-2));
+const ep = [400, 800, 1200, 1600, 2000, 2400, 2800];
+ep.forEach(x => e.push(ce(x, 'g')));
+e.push(ce(1800, 'r'));
+gp.push({ x: 1000, w: GW });
+ngx = 1000 + GMD + Math.random() * (GMX - GMD);
+
+function rs() {
+  go = 0; got = 0; s = 0; cs = AS; mx = 2800; nrx = 1800; ngx = 1000;
+  p.x = 500; p.y = PY - PH; p.vy = 0; p.vx = 0; p.j = 0; p.g = 0; p.ph = 0; p.pt = 0; p.jr = 2; p.fc = 0;
+  e = []; ep.forEach(x => e.push(ce(x, 'g'))); e.push(ce(1800, 'r'));
+  gp = []; gp.push({ x: 1000, w: GW }); ngx = 1000 + GMD + Math.random() * (GMX - GMD);
 }
 
-function U(x,y){
-if(R||S.length>1&&S[0].x+x==S[1].x&&S[0].y+y==S[1].y)return;
-D={x,y};
+function u() {
+  if (go) return;
+  p.vx = cs; p.x += p.vx;
+  if (p.ph) p.pt--, p.pt <= 0 && (p.ph = 0);
+  p.fc++;
+  if (p.x < 0) p.x = 0;
+
+  while (mx < p.x + W * 2) mx += CSI, e.push(ce(mx, 'g'));
+  while (nrx < p.x + W * 2) {
+    const og = gp.some(g => nrx >= g.x && nrx < g.x + g.w);
+    og || e.push(ce(nrx, 'r'));
+    nrx += RCI;
+  }
+  e = e.filter(en => en.x > p.x - W);
+
+  const gm = 1 + (cs - AS) * .15, sgm = GMD * gm, sgx = GMX * gm;
+  while (ngx < p.x + W * 2) gp.push({ x: ngx, w: GW }), ngx += sgm + Math.random() * (sgx - sgm);
+  gp = gp.filter(g => g.x + g.w > p.x - W);
+
+  p.vy += G; p.y += p.vy;
+  let og = !1;
+  const pb = p.ph ? { x: p.x + 15, y: p.y + 45, w: 60, h: 60 } : { x: p.x, y: p.y, w: p.w, h: p.h };
+  const bcx = pb.x + pb.w / 2;
+  for (let g of gp) { if (bcx > g.x + 6 && bcx < g.x + g.w - 6) og = 1; }
+  
+  if (!og && pb.y + pb.h >= PY) {
+    p.y = PY - pb.h - (pb.y - p.y);
+    p.vy = 0; p.g = 1; p.j = 0; p.jr = 2;
+  } else p.g = 0;
+  
+  if (p.y > H) go = 1;
+
+  for (let i = e.length - 1; i >= 0; i--) {
+    const en = e[i];
+    en.fp += en.fs;
+    en.y = en.by + Math.sin(en.fp) * en.fr;
+    en.y = Math.max(CY + en.r, Math.min(PY - en.r, en.y));
+    
+    const pbc = p.ph ? { x: p.x + 15, y: p.y + 45, w: 60, h: 60 } : { x: p.x, y: p.y, w: p.w, h: p.h };
+    const dx = en.x - (pbc.x + pbc.w / 2), dy = en.y - (pbc.y + pbc.h / 2);
+    const cx = Math.max(pbc.x, Math.min(en.x, pbc.x + pbc.w)), cy = Math.max(pbc.y, Math.min(en.y, pbc.y + pbc.h));
+    const sx = en.x - cx, sy = en.y - cy, d = Math.sqrt(sx * sx + sy * sy);
+    
+    if (d < en.r) {
+      if (en.t === 'r') { if (!p.ph) go = 1; }
+      else s++, cs = AS + s * .1, e.splice(i, 1);
+    }
+  }
 }
 
-onkeydown=e=>{
-let d=k[e.key];
-d&&U(d[0],d[1]);
-e.key==' '&&R&&Q();
-};
+function d() {
+  const gd = cx.createLinearGradient(0, 0, W, H);
+  gd.addColorStop(0, '#FF6B6B'); gd.addColorStop(.25, '#FFA500'); gd.addColorStop(.5, '#FFD700');
+  gd.addColorStop(.75, '#4ECDC4'); gd.addColorStop(1, '#45B7D1');
+  cx.fillStyle = gd; cx.fillRect(0, 0, W, H);
 
-ontouchstart=e=>{
-p[0]=e.changedTouches[0].screenX;
-p[1]=e.changedTouches[0].screenY;
-};
+  const cmx = p.x - (W * .25);
+  cx.save(); cx.translate(-cmx, 0);
 
-ontouchend=e=>{
-p[2]=e.changedTouches[0].screenX;
-p[3]=e.changedTouches[0].screenY;
-let x=p[2]-p[0],y=p[3]-p[1],a=Math.abs(x),b=Math.abs(y);
-if(a<M&&b<M)return;
-a>b?U(x>0?1:-1,0):U(0,y>0?1:-1);
-};
+  cx.fillStyle = '#4A4A4A'; cx.fillRect(0, CY, p.x + W * 2, 20);
+  cx.fillStyle = '#6B3410';
+  const de = p.x + W * 2;
+  let ss = 0;
+  for (let g of gp.sort((a, b) => a.x - b.x)) {
+    g.x > ss && cx.fillRect(ss, PY, g.x - ss, 150);
+    ss = g.x + g.w;
+  }
+  ss < de && cx.fillRect(ss, PY, de - ss, 150);
 
-ontouchmove=e=>e.preventDefault();
+  cx.fillStyle = '#F00';
+  for (let g of gp) cx.fillRect(g.x - 8, PY, 8, 150), cx.fillRect(g.x + g.w, PY, 8, 150);
 
-t.onclick=Q;
-Q();
-})();
-</script>
+  cx.fillStyle = 'rgba(255,255,255,0.1)';
+  for (let x = 0; x < de; x += 50) {
+    const og = gp.some(g => x >= g.x && x < g.x + g.w);
+    og || cx.fillRect(x, PY, 25, 20);
+  }
+
+  for (let en of e) {
+    if (p.ph && en.t === 'r') continue;
+    cx.fillStyle = en.c; cx.beginPath(); cx.arc(en.x, en.y, en.r, 0, 2 * Math.PI); cx.fill();
+    cx.fillStyle = 'rgba(255,255,255,0.6)'; cx.beginPath(); cx.arc(en.x - 5, en.y - 5, 8, 0, 2 * Math.PI); cx.fill();
+    cx.strokeStyle = en.t === 'r' ? '#8B0000' : '#DAA520'; cx.lineWidth = en.t === 'r' ? 3 : 2;
+    cx.beginPath(); cx.arc(en.x, en.y, en.r, 0, 2 * Math.PI); cx.stroke();
+    if (en.t === 'r') {
+      cx.strokeStyle = 'rgba(255,0,0,0.4)'; cx.lineWidth = 6;
+      cx.beginPath(); cx.arc(en.x, en.y, en.r + 3, 0, 2 * Math.PI); cx.stroke();
+    }
+  }
+
+  if (p.ph) {
+    const sx = p.x + 15, sy = p.y + 45, ss = 60;
+    cx.fillStyle = '#FD7'; cx.beginPath(); cx.arc(sx + 30, sy - 10, 35, 0, 2 * Math.PI); cx.fill();
+    cx.shadowColor = '#0099FF'; cx.shadowBlur = 15;
+    cx.strokeStyle = '#0099FF'; cx.lineWidth = 4; cx.strokeRect(sx, sy, ss, ss);
+    cx.globalAlpha = .7; cx.fillStyle = '#0066FF'; cx.fillRect(sx, sy, ss, ss); cx.globalAlpha = 1;
+    cx.strokeStyle = '#FFF'; cx.lineWidth = 3; cx.lineCap = 'round';
+    cx.beginPath(); cx.moveTo(sx + 15, sy + 20); cx.lineTo(sx + 27, sy + 20); cx.stroke();
+    cx.beginPath(); cx.moveTo(sx + 33, sy + 20); cx.lineTo(sx + 45, sy + 20); cx.stroke();
+  } else {
+    cx.fillStyle = go ? '#F00' : '#000'; cx.fillRect(p.x, p.y, p.w, p.h);
+    cx.fillStyle = '#FFF';
+    cx.fillRect(p.x + 10, p.y + 20, 10, 10); cx.fillRect(p.x + 40, p.y + 20, 10, 10);
+    cx.fillStyle = '#000';
+    cx.fillRect(p.x + 12, p.y + 22, 5, 5); cx.fillRect(p.x + 42, p.y + 22, 5, 5);
+    
+    cx.fillStyle = '#000';
+    const ls = 20, lg = p.x - ls, rg = p.x + p.w, lgy = p.y + p.h - 15;
+    if (p.g) {
+      const cf = p.fc % 60;
+      if (cf < 30) cx.fillRect(lg, lgy, ls, ls);
+      else cx.fillRect(rg, lgy, ls, ls);
+    } else {
+      const cf = p.fc % 60;
+      cf < 30 && (cx.fillRect(lg, lgy, ls, ls), cx.fillRect(rg, lgy, ls, ls));
+    }
+  }
+
+  if (p.ph) {
+    for (let en of e) {
+      if (en.t === 'r') {
+        cx.fillStyle = en.c; cx.beginPath(); cx.arc(en.x, en.y, en.r, 0, 2 * Math.PI); cx.fill();
+        cx.fillStyle = 'rgba(255,255,255,0.6)'; cx.beginPath(); cx.arc(en.x - 5, en.y - 5, 8, 0, 2 * Math.PI); cx.fill();
+        cx.strokeStyle = '#8B0000'; cx.lineWidth = 3;
+        cx.beginPath(); cx.arc(en.x, en.y, en.r, 0, 2 * Math.PI); cx.stroke();
+      }
+    }
+  }
+
+  cx.restore();
+
+  if (go) {
+    cx.fillStyle = 'rgba(0,0,0,0.7)'; cx.fillRect(0, 0, W, H);
+    cx.fillStyle = '#F00'; cx.font = 'bold 60px Arial'; cx.textAlign = 'center';
+    cx.fillText('GAME OVER!', W / 2, H / 2 - 40);
+    cx.fillStyle = '#FFF'; cx.font = '20px Arial';
+    cx.fillText('Press R to Restart', W / 2, H / 2 + 20);
+    cx.fillStyle = '#4CAF50'; cx.fillRect(W / 2 - 100, H / 2 + 50, 200, 60);
+    cx.strokeStyle = '#FFF'; cx.lineWidth = 3; cx.strokeRect(W / 2 - 100, H / 2 + 50, 200, 60);
+    cx.fillStyle = '#FFF'; cx.font = 'bold 24px Arial';
+    cx.fillText('RESTART', W / 2, H / 2 + 88);
+  }
+
+  cx.fillStyle = 'rgba(0,0,0,0.5)'; cx.fillRect(W - 260, 10, 250, 70);
+  cx.fillStyle = '#FFF'; cx.font = '14px Arial';
+  cx.fillText(`Pos: ${(p.x / 30).toFixed(1)}cm`, W - 250, 30);
+  cx.fillText(`Status: ${go ? 'DEAD' : 'ALIVE'}`, W - 250, 50);
+  cx.fillStyle = '#FD7'; cx.font = 'bold 20px Arial';
+  cx.fillText(`Score: ${s}`, W - 250, 75);
+}
+
+function gl() { u(); d(); requestAnimationFrame(gl); }
+gl();
+  </script>
 </body>
 </html>
