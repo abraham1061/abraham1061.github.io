@@ -1,11 +1,106 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Snake</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;position:fixed;-webkit-overflow-scrolling:touch}
+body{font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#111;color:#eee;touch-action:none}
+#a{display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px;max-width:100vw;max-height:100vh}
+h1{margin:0;font-size:24px}
+#b{background:#222;padding:8px;border-radius:8px;touch-action:none}
+canvas{display:block;background:#000;max-width:calc(100vw - 32px);max-height:calc(100vh - 200px);touch-action:none}
+#c{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center}
+button{padding:12px 16px;border-radius:8px;border:none;cursor:pointer;background:#2ecc71;color:#fff;font-size:16px;font-weight:500;touch-action:manipulation}
+button:active{background:#27ae60}
+#s{font-size:18px;font-weight:500}
+#i{font-size:14px;color:#888;text-align:center}
+@media (max-width:480px){canvas{width:90vmin!important;height:90vmin!important}h1{font-size:20px}}
+</style>
 </head>
 <body>
-    <a href="https://abraham1061.github.io/skills-github-pages/">click heree</a>
+<div id="a">
+<h1>Snake</h1>
+<div id="b"><canvas id="g" width="400" height="400"></canvas></div>
+<div id="c"><button id="t">Start / Restart</button><span id="s">Score: 0</span></div>
+<div id="i">Swipe to control</div>
+</div>
+<script>
+(()=>{
+let c=g.getContext('2d'),T=20,W=g.width/T,H=g.height/T,
+S,D,F,R,O,L,p=[0,0,0,0],M=30,
+k={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};
+
+function Q(){
+S=[{x:W/2|0,y:H/2|0}];
+D={x:1,y:0};
+for(F={x:Math.random()*W|0,y:Math.random()*H|0};S.some(v=>v.x==F.x&&v.y==F.y);)
+F={x:Math.random()*W|0,y:Math.random()*H|0};
+O=R=0;
+s.textContent='Score: 0';
+L&&clearInterval(L);
+L=setInterval(N,100);
+}
+
+function N(){
+let h={x:(S[0].x+D.x+W)%W,y:(S[0].y+D.y+H)%H};
+if(S.some(v=>v.x==h.x&&v.y==h.y)){
+clearInterval(L);
+c.fillStyle='rgba(0,0,0,.6)';
+c.fillRect(0,0,400,400);
+c.fillStyle='#fff';
+c.font='20px sans-serif';
+c.textAlign='center';
+c.fillText('Game Over — Score: '+O,200,200);
+return;
+}
+S.unshift(h);
+if(h.x==F.x&&h.y==F.y){
+s.textContent='Score: '+ ++O;
+for(F={x:Math.random()*W|0,y:Math.random()*H|0};S.some(v=>v.x==F.x&&v.y==F.y);)
+F={x:Math.random()*W|0,y:Math.random()*H|0};
+}else S.pop();
+c.clearRect(0,0,400,400);
+c.fillStyle='#e74c3c';
+c.fillRect(F.x*T,F.y*T,T,T);
+c.fillStyle='#2ecc71';
+S.forEach(v=>c.fillRect(v.x*T+1,v.y*T+1,T-2,T-2));
+}
+
+function U(x,y){
+if(R||S.length>1&&S[0].x+x==S[1].x&&S[0].y+y==S[1].y)return;
+D={x,y};
+}
+
+onkeydown=e=>{
+let d=k[e.key];
+d&&U(d[0],d[1]);
+e.key==' '&&R&&Q();
+};
+
+ontouchstart=e=>{
+p[0]=e.changedTouches[0].screenX;
+p[1]=e.changedTouches[0].screenY;
+};
+
+ontouchend=e=>{
+p[2]=e.changedTouches[0].screenX;
+p[3]=e.changedTouches[0].screenY;
+let x=p[2]-p[0],y=p[3]-p[1],a=Math.abs(x),b=Math.abs(y);
+if(a<M&&b<M)return;
+a>b?U(x>0?1:-1,0):U(0,y>0?1:-1);
+};
+
+ontouchmove=e=>e.preventDefault();
+
+t.onclick=Q;
+Q();
+})();
+</script>
 </body>
 </html>
