@@ -1,0 +1,249 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Snake</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a href="index.html" id="back-btn">← MENU</a>
+    <div id="game-wrapper">
+      <h1>SNAKE</h1>
+      <div id="overlay">
+        <div class="overlay-content">
+          <h2>SNAKE</h2>
+          <div class="controls-section">
+            <h3>Mobile</h3>
+            <p>Tap up to move up</p>
+            <p>Tap down to move down</p>
+            <p>Tap left to move left</p>
+            <p>Tap right to move right</p>
+          </div>
+          <div class="controls-section">
+            <h3>Keyboard</h3>
+            <p>Arrow Keys or WASD to move</p>
+            <p>Space to start</p>
+          </div>
+        </div>
+        <button id="start-btn">START GAME</button>
+      </div>
+      <div id="canvas-wrapper">
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+      </div>
+      <div id="controls-panel">
+        <button id="restartButton">Start / Restart</button>
+        <span id="scoreText">Score: 0</span>
+    </div>
+    <script>
+// ===== 1. CONSTANTS & CONFIGURATION =====
+const GRID_SIZE = 20;
+const CANVAS_WIDTH = 400;
+const CANVAS_HEIGHT = 400;
+const GAME_TICK_SPEED = 100;
+const INITIAL_SNAKE_POSITION = [10, 10];
+const INITIAL_DIRECTION = [1, 0];
+
+const DIRECTION_MAP = {
+  'U': [0, -1], 'D': [0, 1], 'L': [-1, 0], 'R': [1, 0],
+  'w': [0, -1], 's': [0, 1], 'a': [-1, 0], 'd': [1, 0]
+};
+
+// ===== 2. UI ELEMENTS & DOM REFERENCES =====
+const canvasElement = document.getElementById('gameCanvas');
+const canvasContext = canvasElement.getContext('2d');
+const overlayElement = document.getElementById('overlay');
+const controlsElement = document.getElementById('controls-panel');
+const startButton = document.getElementById('start-btn');
+const restartButton = document.getElementById('restartButton');
+const scoreDisplay = document.getElementById('scoreText');
+
+// ===== 3. GAME STATE =====
+let snakeSegments = [];
+let directionVector = [...INITIAL_DIRECTION];
+let foodPosition = null;
+let playerScore = 0;
+let gameStarted = false;
+let gameLoopInterval = null;
+
+// ===== 4. RENDERING SYSTEM =====
+function drawBackground() {
+  canvasContext.fillStyle = '#000';
+  canvasContext.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+function drawFood() {
+  canvasContext.fillStyle = '#ef4444';
+  canvasContext.fillRect(foodPosition[0] * GRID_SIZE, foodPosition[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+}
+
+function drawSnake() {
+  canvasContext.fillStyle = '#fbbf24';
+  for (let segment of snakeSegments) {
+    canvasContext.fillRect(segment[0] * GRID_SIZE + 1, segment[1] * GRID_SIZE + 1, 18, 18);
+  }
+}
+
+function drawGameOver() {
+  canvasContext.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  canvasContext.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  canvasContext.fillStyle = '#fff';
+  canvasContext.font = '20px sans-serif';
+  canvasContext.textAlign = 'center';
+  canvasContext.fillText('Game Over — ' + playerScore, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+}
+
+function renderFrame() {
+  drawBackground();
+  
+  if (gameLoopInterval) {
+    drawFood();
+    drawSnake();
+  } else {
+    drawGameOver();
+  }
+}
+
+// ===== 5. MOVEMENT & GAME MECHANICS =====
+function positionsMatch(a, b) {
+  return a[0] === b[0] && a[1] === b[1];
+}
+
+function calculateNewHeadPosition() {
+  const newX = (snakeSegments[0][0] + directionVector[0] + GRID_SIZE) % GRID_SIZE;
+  const newY = (snakeSegments[0][1] + directionVector[1] + GRID_SIZE) % GRID_SIZE;
+  return [newX, newY];
+}
+
+function moveSnake(newHeadPosition) {
+  snakeSegments.unshift(newHeadPosition);
+}
+
+function tryChangeDirection(newDirection) {
+  // Prevent moving backwards into itself
+  const isBackward = (directionVector[0] + newDirection[0] === 0) && (directionVector[1] + newDirection[1] === 0);
+  if (!isBackward) {
+    directionVector = newDirection;
+  }
+}
+
+// ===== 6. GAME CONDITIONS & COLLISION =====
+function checkSnakeSelfCollision(headPosition) {
+  return snakeSegments.some(s => positionsMatch(s, headPosition));
+}
+
+function checkFoodCollision(headPosition) {
+  return positionsMatch(headPosition, foodPosition);
+}
+
+function handleGameOver() {
+  clearInterval(gameLoopInterval);
+  gameLoopInterval = null;
+  renderFrame();
+}
+
+function handleFoodEaten() {
+  playerScore++;
+  scoreDisplay.textContent = 'Score: ' + playerScore;
+  generateFood();
+}
+
+function handleSnakeMovement() {
+  snakeSegments.pop();
+}
+
+// ===== 7. GAME LOGIC & INITIALIZATION =====
+function generateFood() {
+  do {
+    foodPosition = [
+      Math.floor(Math.random() * GRID_SIZE),
+      Math.floor(Math.random() * GRID_SIZE)
+    ];
+  } while (snakeSegments.some(s => positionsMatch(s, foodPosition)));
+}
+
+function resetGameState() {
+  snakeSegments = [[...INITIAL_SNAKE_POSITION]];
+  directionVector = [...INITIAL_DIRECTION];
+  playerScore = 0;
+  scoreDisplay.textContent = 'Score: 0';
+  generateFood();
+}
+
+function startGameLoop() {
+  clearInterval(gameLoopInterval);
+  gameLoopInterval = setInterval(gameTick, GAME_TICK_SPEED);
+}
+
+function gameTick() {
+  const newHeadPosition = calculateNewHeadPosition();
+  
+  // Check self collision
+  if (checkSnakeSelfCollision(newHeadPosition)) {
+    handleGameOver();
+    return;
+  }
+  
+  // Move snake
+  moveSnake(newHeadPosition);
+  
+  // Check food collision
+  if (checkFoodCollision(newHeadPosition)) {
+    handleFoodEaten();
+  } else {
+    handleSnakeMovement();
+  }
+  
+  // Render
+  renderFrame();
+}
+
+function initializeGame() {
+  if (!gameStarted) {
+    gameStarted = true;
+    overlayElement.classList.add('hidden');
+    controlsElement.classList.add('show');
+  }
+  resetGameState();
+  startGameLoop();
+}
+
+// ===== 8. CONTROLS SYSTEM =====
+function setupStartButtonListeners() {
+  const handleStart = () => initializeGame();
+  startButton.addEventListener('click', handleStart);
+  startButton.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    handleStart();
+  });
+}
+
+function setupKeyboardControls() {
+  window.addEventListener('keydown', (e) => {
+    if (!gameStarted) return;
+    
+    // Get direction from key
+    const keyCode = e.key.length === 1 ? e.key : e.key[5]; // Handle arrow keys
+    const newDirection = DIRECTION_MAP[keyCode];
+    
+    if (newDirection) {
+      tryChangeDirection(newDirection);
+    } else if (e.key === ' ' && !gameLoopInterval) {
+      // Space restarts if paused
+      initializeGame();
+    }
+  });
+}
+
+function setupMobileControls() {
+  restartButton.addEventListener('click', initializeGame);
+}
+
+// ===== 9. MAIN GAME LOOP =====
+// Initialize and start
+setupStartButtonListeners();
+setupKeyboardControls();
+setupMobileControls();
+    </script>
+  </body>
+</html>

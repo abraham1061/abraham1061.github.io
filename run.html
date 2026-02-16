@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>2D Sidescroller - Mobile</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a href="index.html" id="back-btn">← MENU</a>
+  <div id="overlay">
+    <div class="overlay-content">
+      <h2>RUN</h2>
+      <div class="controls-section">
+        <h3>Mobile</h3>
+        <p>Tap left button to jump</p>
+        <p>Tap right button to shield</p>
+      </div>
+      <div class="controls-section">
+        <h3>Keyboard</h3>
+        <p>↑ Arrow Up to jump</p>
+        <p>D to shield</p>
+        <p>R to restart</p>
+      </div>
+    </div>
+    <button id="start-btn">START GAME</button>
+  </div>
+  <div id="run-info"><p>Keyboard: ↑ Jump | D Shield | R Restart</p></div>
+  <div id="run-container">
+    <canvas id="run-canvas" width="800" height="600"></canvas>
+    <div id="run-controls">
+      <button id="jump-btn" class="btn">JUMP UP</button>
+      <button id="shield-btn" class="btn">SHIELD</button>
+    </div>
+  </div>
+  <script>
+// ===== 1. CONSTANTS & CONFIGURATION =====
+const CANVAS_WIDTH = 800, CANVAS_HEIGHT = 600;
+const CANVAS_Y = 0;
+const PLATFORM_Y = CANVAS_HEIGHT - 150;
+const GRAVITY = 0.6;
+const PLAYER_WIDTH = 60, PLAYER_HEIGHT = 150;
+const JUMP_POWER = 15;
+const ACCELERATION_START = 2;
+const GAP_WIDTH = 180, GAP_MIN_DISTANCE = 450, GAP_MAX_DISTANCE = 750;
+const COIN_SPAWN_INTERVAL = 100, ROCK_SPAWN_INTERVAL = 500;
+const SHIELD_PROTECTION_DURATION = 90;
+const INITIAL_COIN_POSITIONS = [400, 800, 1200, 1600, 2000, 2400, 2800];
+const TWO_PI = 2 * Math.PI;
+
+// ===== 2. UI ELEMENTS & DOM REFERENCES =====
+const canvasElement = document.getElementById('run-canvas');
+const canvasContext = canvasElement.getContext('2d');
+const overlayElement = document.getElementById('overlay');
+const controlsElement = document.getElementById('run-controls');
+const startButton = document.getElementById('start-btn');
+const jumpButton = document.getElementById('jump-btn');
+const shieldButton = document.getElementById('shield-btn');
+
+// ===== 3. GAME STATE =====
+const playerObject = {
+  x: 500, y: PLATFORM_Y - PLAYER_HEIGHT,
+  w: PLAYER_WIDTH, h: PLAYER_HEIGHT,
+  vy: 0, vx: 0,
+  j: false, g: false, ph: false, pt: 0, jr: 2, fc: 0
+};
+
+let isGameOver = false;
+let playerScore = 0;
+let currentSpeed = ACCELERATION_START;
+let gameStarted = false;
+let coinsAndRocksArray = [];
+let platformGapsArray = [];
+
+// Spawn tracking state
+let maxSpawnedX = 2800;
+let nextRockSpawnX = 1800;
+let nextGapSpawnX = 1000;
+
+// ===== 4. RENDERING SYSTEM =====
+function fillCircle(x, y, r) {
+  canvasContext.beginPath();
+  canvasContext.arc(x, y, r, 0, TWO_PI);
+  canvasContext.fill();
+}
+
+function strokeCircle(x, y, r) {
+  canvasContext.beginPath();
+  canvasContext.arc(x, y, r, 0, TWO_PI);
+  canvasContext.stroke();
+}
+
+function drawBackground() {
+  canvasContext.fillStyle = '#3b82f6';
+  canvasContext.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+function drawPlatform() {
+  // Draw surface line
+  canvasContext.fillStyle = '#4A4A4A';
+  canvasContext.fillRect(0, CANVAS_Y, playerObject.x + CANVAS_WIDTH * 2, 20);
+  
+  // Draw pit areas (gaps)
+  canvasContext.fillStyle = '#6B3410';
+  const drawEnd = playerObject.x + CANVAS_WIDTH * 2;
+  let startX = 0;
+  
+  for (let gap of platformGapsArray.sort((a, b) => a.x - b.x)) {
+    gap.x > startX && canvasContext.fillRect(startX, PLATFORM_Y, gap.x - startX, 150);
+    startX = gap.x + gap.w;
+  }
+  startX < drawEnd && canvasContext.fillRect(startX, PLATFORM_Y, drawEnd - startX, 150);
+
+  // Draw gap edges (red warning zones)
+  canvasContext.fillStyle = '#ef4444';
+  for (let gap of platformGapsArray) {
+    canvasContext.fillRect(gap.x - 8, PLATFORM_Y, 8, 150);
+    canvasContext.fillRect(gap.x + gap.w, PLATFORM_Y, 8, 150);
+  }
+
+  // Draw platform grip pattern
+  canvasContext.fillStyle = 'rgba(255,255,255,0.1)';
+  for (let x = 0; x < drawEnd; x += 50) {
+    const onGap = platformGapsArray.some(g => x >= g.x && x < g.x + g.w);
+    onGap || canvasContext.fillRect(x, PLATFORM_Y, 25, 20);
+  }
+}
+
+function drawCoinOrRock(enemy) {
+  const isRock = enemy.t === 'r';
+  
+  canvasContext.fillStyle = enemy.c;
+  fillCircle(enemy.x, enemy.y, enemy.r);
+  
+  canvasContext.fillStyle = 'rgba(255,255,255,0.6)';
+  fillCircle(enemy.x - 5, enemy.y - 5, 8);
+  
+  canvasContext.strokeStyle = isRock ? '#ef4444' : '#fcd34d';
+  canvasContext.lineWidth = isRock ? 3 : 2;
+  strokeCircle(enemy.x, enemy.y, enemy.r);
+  
+  if (isRock) {
+    canvasContext.strokeStyle = 'rgba(239,68,68,0.4)';
+    canvasContext.lineWidth = 6;
+    strokeCircle(enemy.x, enemy.y, enemy.r + 3);
+  }
+}
+
+function drawCoinsAndRocks() {
+  for (let enemy of coinsAndRocksArray) {
+    // Skip rocks if player has shield (drawn on top later)
+    if (playerObject.ph && enemy.t === 'r') continue;
+    drawCoinOrRock(enemy);
+  }
+}
+
+function drawShield() {
+  const sx = playerObject.x + 15, sy = playerObject.y + 45, size = 60;
+  
+  // Shield orb
+  canvasContext.fillStyle = '#fbbf24';
+  fillCircle(sx + 30, sy - 10, 35);
+  
+  // Shield border with glow
+  canvasContext.shadowColor = '#3b82f6';
+  canvasContext.shadowBlur = 15;
+  canvasContext.strokeStyle = '#3b82f6';
+  canvasContext.lineWidth = 4;
+  canvasContext.strokeRect(sx, sy, size, size);
+  canvasContext.shadowBlur = 0;
+  
+  // Shield fill
+  canvasContext.globalAlpha = .7;
+  canvasContext.fillStyle = '#2563eb';
+  canvasContext.fillRect(sx, sy, size, size);
+  canvasContext.globalAlpha = 1;
+  
+  // Shield pattern
+  canvasContext.strokeStyle = '#FFF';
+  canvasContext.lineWidth = 3;
+  canvasContext.lineCap = 'round';
+  canvasContext.beginPath();
+  canvasContext.moveTo(sx + 15, sy + 20);
+  canvasContext.lineTo(sx + 27, sy + 20);
+  canvasContext.stroke();
+  canvasContext.beginPath();
+  canvasContext.moveTo(sx + 33, sy + 20);
+  canvasContext.lineTo(sx + 45, sy + 20);
+  canvasContext.stroke();
+}
+
+function drawPlayer() {
+  canvasContext.fillStyle = isGameOver ? '#ef4444' : '#000';
+  canvasContext.fillRect(playerObject.x, playerObject.y, playerObject.w, playerObject.h);
+  
+  // Draw eyes
+  canvasContext.fillStyle = '#FFF';
+  canvasContext.fillRect(playerObject.x + 10, playerObject.y + 20, 10, 10);
+  canvasContext.fillRect(playerObject.x + 40, playerObject.y + 20, 10, 10);
+  
+  // Draw pupils
+  canvasContext.fillStyle = '#000';
+  canvasContext.fillRect(playerObject.x + 12, playerObject.y + 22, 5, 5);
+  canvasContext.fillRect(playerObject.x + 42, playerObject.y + 22, 5, 5);
+  
+  // Draw legs
+  const legSize = 20, leftLegX = playerObject.x - legSize, rightLegX = playerObject.x + playerObject.w;
+  const legY = playerObject.y + playerObject.h - 15;
+  const firstHalf = playerObject.fc % 60 < 30;
+  canvasContext.fillStyle = isGameOver ? '#ef4444' : '#000';
+  
+  if (playerObject.g) {
+    canvasContext.fillRect(firstHalf ? leftLegX : rightLegX, legY, legSize, legSize);
+  } else if (firstHalf) {
+    canvasContext.fillRect(leftLegX, legY, legSize, legSize);
+    canvasContext.fillRect(rightLegX, legY, legSize, legSize);
+  }
+}
+
+function drawGameOver() {
+  canvasContext.fillStyle = 'rgba(0,0,0,0.7)';
+  canvasContext.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  
+  canvasContext.fillStyle = '#ef4444';
+  canvasContext.font = 'bold 60px Arial';
+  canvasContext.textAlign = 'center';
+  canvasContext.fillText('GAME OVER!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
+  
+  canvasContext.fillStyle = '#FFF';
+  canvasContext.font = '20px Arial';
+  canvasContext.fillText('Press R to Restart', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+  
+  canvasContext.fillStyle = '#fbbf24';
+  canvasContext.fillRect(CANVAS_WIDTH / 2 - 100, CANVAS_HEIGHT / 2 + 50, 200, 60);
+  canvasContext.strokeStyle = '#FFF';
+  canvasContext.lineWidth = 3;
+  canvasContext.strokeRect(CANVAS_WIDTH / 2 - 100, CANVAS_HEIGHT / 2 + 50, 200, 60);
+  canvasContext.fillStyle = '#FFF';
+  canvasContext.font = 'bold 24px Arial';
+  canvasContext.fillText('RESTART', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 88);
+}
+
+function drawHUD() {
+  canvasContext.fillStyle = 'rgba(0,0,0,0.5)';
+  canvasContext.fillRect(CANVAS_WIDTH - 260, 10, 250, 70);
+  
+  canvasContext.fillStyle = '#FFF';
+  canvasContext.font = '14px Arial';
+  canvasContext.fillText(`Pos: ${(playerObject.x / 30).toFixed(1)}cm`, CANVAS_WIDTH - 250, 30);
+  canvasContext.fillText(`Status: ${isGameOver ? 'DEAD' : 'ALIVE'}`, CANVAS_WIDTH - 250, 50);
+  
+  canvasContext.fillStyle = '#fbbf24';
+  canvasContext.font = 'bold 20px Arial';
+  canvasContext.fillText(`Score: ${playerScore}`, CANVAS_WIDTH - 250, 75);
+}
+
+function renderFrame() {
+  drawBackground();
+  
+  const cameraOffset = playerObject.x - (CANVAS_WIDTH * .25);
+  canvasContext.save();
+  canvasContext.translate(-cameraOffset, 0);
+  
+  drawPlatform();
+  drawCoinsAndRocks();
+  
+  if (playerObject.ph) {
+    drawShield();
+    // Draw rocks on top of shield
+    for (let enemy of coinsAndRocksArray) {
+      if (enemy.t === 'r') drawCoinOrRock(enemy);
+    }
+  } else {
+    drawPlayer();
+  }
+  
+  canvasContext.restore();
+  
+  if (isGameOver) drawGameOver();
+  drawHUD();
+}
+
+// ===== 5. MOVEMENT & PHYSICS SYSTEM =====
+function updatePlayerPhysics() {
+  // Horizontal movement
+  playerObject.vx = currentSpeed;
+  playerObject.x += playerObject.vx;
+  
+  // Vertical gravity
+  playerObject.vy += GRAVITY;
+  playerObject.y += playerObject.vy;
+  
+  // Bound player to screen
+  if (playerObject.x < 0) playerObject.x = 0;
+  
+  // Animation counter
+  playerObject.fc++;
+}
+
+function updateShield() {
+  if (playerObject.ph) {
+    playerObject.pt--;
+    if (playerObject.pt <= 0) playerObject.ph = false;
+  }
+}
+
+function getPlayerCollisionBounds() {
+  return playerObject.ph ? 
+    { x: playerObject.x + 15, y: playerObject.y + 45, w: 60, h: 60 } : 
+    { x: playerObject.x, y: playerObject.y, w: playerObject.w, h: playerObject.h };
+}
+
+function checkIfPlayerOnGap(bounds) {
+  const centerX = bounds.x + bounds.w / 2;
+  for (let gap of platformGapsArray) {
+    if (centerX > gap.x + 6 && centerX < gap.x + gap.w - 6) return true;
+  }
+  return false;
+}
+
+function handleGrounding() {
+  const bounds = getPlayerCollisionBounds();
+  const onGap = checkIfPlayerOnGap(bounds);
+  
+  if (!onGap && bounds.y + bounds.h >= PLATFORM_Y) {
+    playerObject.y = PLATFORM_Y - bounds.h - (bounds.y - playerObject.y);
+    playerObject.vy = 0;
+    playerObject.g = true;
+    playerObject.j = false;
+    playerObject.jr = 2;
+  } else {
+    playerObject.g = false;
+  }
+}
+
+function checkFallDeathCondition() {
+  if (playerObject.y > CANVAS_HEIGHT) isGameOver = true;
+}
+
+// ===== 6. GAME CONDITIONS & COLLISION =====
+function updateEnemyAnimations() {
+  for (let enemy of coinsAndRocksArray) {
+    enemy.fp += enemy.fs;
+    enemy.y = enemy.by + Math.sin(enemy.fp) * enemy.fr;
+    enemy.y = Math.max(CANVAS_Y + enemy.r, Math.min(PLATFORM_Y - enemy.r, enemy.y));
+  }
+}
+
+function checkEnemyCollisions() {
+  const bounds = getPlayerCollisionBounds();
+  
+  for (let i = coinsAndRocksArray.length - 1; i >= 0; i--) {
+    const enemy = coinsAndRocksArray[i];
+    
+    // Circle-rect collision detection
+    const closestX = Math.max(bounds.x, Math.min(enemy.x, bounds.x + bounds.w));
+    const closestY = Math.max(bounds.y, Math.min(enemy.y, bounds.y + bounds.h));
+    const distX = enemy.x - closestX;
+    const distY = enemy.y - closestY;
+    const distance = Math.sqrt(distX * distX + distY * distY);
+    
+    if (distance < enemy.r) {
+      if (enemy.t === 'r') {
+        if (!playerObject.ph) isGameOver = true;
+      } else {
+        playerScore++;
+        currentSpeed = ACCELERATION_START + playerScore * 0.1;
+        coinsAndRocksArray.splice(i, 1);
+      }
+    }
+  }
+}
+
+// ===== 7. GAME LOGIC & SPAWNING =====
+function createCoinOrRock(x, type = 'g') {
+  return {
+    x: x, by: (CANVAS_Y + PLATFORM_Y) / 2, y: 0,
+    r: 20, t: type, c: type === 'r' ? '#ef4444' : '#fbbf24',
+    fp: Math.random() * TWO_PI,
+    fs: type === 'r' ? .05 : .08,
+    fr: (PLATFORM_Y - CANVAS_Y) / 2 - 40
+  };
+}
+
+function spawnCoins() {
+  while (maxSpawnedX < playerObject.x + CANVAS_WIDTH * 2) {
+    maxSpawnedX += COIN_SPAWN_INTERVAL;
+    coinsAndRocksArray.push(createCoinOrRock(maxSpawnedX, 'g'));
+  }
+}
+
+function spawnRocks() {
+  while (nextRockSpawnX < playerObject.x + CANVAS_WIDTH * 2) {
+    const onGap = platformGapsArray.some(g => nextRockSpawnX >= g.x && nextRockSpawnX < g.x + g.w);
+    if (!onGap) coinsAndRocksArray.push(createCoinOrRock(nextRockSpawnX, 'r'));
+    nextRockSpawnX += ROCK_SPAWN_INTERVAL;
+  }
+}
+
+function spawnGaps() {
+  const speedMult = 1 + (currentSpeed - ACCELERATION_START) * .15;
+  const minDist = GAP_MIN_DISTANCE * speedMult;
+  const maxDist = GAP_MAX_DISTANCE * speedMult;
+  
+  while (nextGapSpawnX < playerObject.x + CANVAS_WIDTH * 2) {
+    platformGapsArray.push({ x: nextGapSpawnX, w: GAP_WIDTH });
+    nextGapSpawnX += minDist + Math.random() * (maxDist - minDist);
+  }
+}
+
+function cleanupOffscreenObjects() {
+  coinsAndRocksArray = coinsAndRocksArray.filter(e => e.x > playerObject.x - CANVAS_WIDTH);
+  platformGapsArray = platformGapsArray.filter(g => g.x + g.w > playerObject.x - CANVAS_WIDTH);
+}
+
+function initializeGame() {
+  isGameOver = false;
+  playerScore = 0;
+  currentSpeed = ACCELERATION_START;
+  maxSpawnedX = 2800;
+  nextRockSpawnX = 1800;
+  nextGapSpawnX = 1000;
+  Object.assign(playerObject, {
+    x: 500, y: PLATFORM_Y - PLAYER_HEIGHT,
+    vy: 0, vx: 0, j: false, g: false,
+    ph: false, pt: 0, jr: 2, fc: 0
+  });
+  coinsAndRocksArray = [];
+  platformGapsArray = [];
+  INITIAL_COIN_POSITIONS.forEach(x => coinsAndRocksArray.push(createCoinOrRock(x, 'g')));
+  coinsAndRocksArray.push(createCoinOrRock(1800, 'r'));
+  platformGapsArray.push({ x: 1000, w: GAP_WIDTH });
+  nextGapSpawnX = 1000 + GAP_MIN_DISTANCE + Math.random() * (GAP_MAX_DISTANCE - GAP_MIN_DISTANCE);
+}
+
+function updateGameLogic() {
+  if (isGameOver) return;
+  
+  updatePlayerPhysics();
+  updateShield();
+  handleGrounding();
+  checkFallDeathCondition();
+  updateEnemyAnimations();
+  checkEnemyCollisions();
+  spawnCoins();
+  spawnRocks();
+  spawnGaps();
+  cleanupOffscreenObjects();
+}
+
+// ===== 8. CONTROLS SYSTEM =====
+function performJump() {
+  if (!gameStarted || isGameOver || playerObject.jr <= 0) return;
+  playerObject.vy = -JUMP_POWER;
+  playerObject.j = true;
+  playerObject.g = false;
+  playerObject.jr--;
+}
+
+function activateShield() {
+  if (!gameStarted || isGameOver || playerObject.ph) return;
+  playerObject.ph = true;
+  playerObject.pt = SHIELD_PROTECTION_DURATION;
+}
+
+function isOnRestartButton(x, y) {
+  const bx = CANVAS_WIDTH / 2, by = CANVAS_HEIGHT / 2 + 80, bw = 100, bh = 30;
+  return x >= bx - bw && x <= bx + bw && y >= by - bh && y <= by + bh;
+}
+
+function getCanvasCoordinates(clientX, clientY) {
+  const rect = canvasElement.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (CANVAS_WIDTH / rect.width),
+    y: (clientY - rect.top) * (CANVAS_HEIGHT / rect.height)
+  };
+}
+
+function setupStartButtonListeners() {
+  const startGame = () => {
+    gameStarted = true;
+    overlayElement.classList.add('hidden');
+    controlsElement.classList.add('show');
+    initializeGame();
+  };
+  
+  startButton.addEventListener('click', startGame);
+  startButton.addEventListener('touchstart', (e) => { e.preventDefault(); startGame(); });
+}
+
+function setupMobileControls() {
+  jumpButton.addEventListener('touchstart', (e) => { e.preventDefault(); performJump(); });
+  jumpButton.addEventListener('click', performJump);
+  shieldButton.addEventListener('touchstart', (e) => { e.preventDefault(); activateShield(); });
+  shieldButton.addEventListener('click', activateShield);
+}
+
+function setupKeyboardControls() {
+  window.addEventListener('keydown', (e) => {
+    if (!gameStarted) return;
+    if (e.key === 'ArrowUp') { e.preventDefault(); performJump(); }
+    else if (e.key === 'd' || e.key === 'D') { e.preventDefault(); activateShield(); }
+    else if (e.key === 'r' && isGameOver) location.reload();
+  });
+}
+
+function setupCanvasClickControls() {
+  canvasElement.addEventListener('click', (e) => {
+    if (!isGameOver) return;
+    const coords = getCanvasCoordinates(e.clientX, e.clientY);
+    if (isOnRestartButton(coords.x, coords.y)) location.reload();
+  });
+  
+  canvasElement.addEventListener('touchend', (e) => {
+    if (!isGameOver) return;
+    const touch = e.changedTouches[0];
+    const coords = getCanvasCoordinates(touch.clientX, touch.clientY);
+    if (isOnRestartButton(coords.x, coords.y)) location.reload();
+  });
+}
+
+// ===== 9. MAIN GAME LOOP =====
+function gameLoop() {
+  if (gameStarted) updateGameLogic();
+  renderFrame();
+  requestAnimationFrame(gameLoop);
+}
+
+// Initialize controls and start game loop
+setupStartButtonListeners();
+setupMobileControls();
+setupKeyboardControls();
+setupCanvasClickControls();
+initializeGame();
+gameLoop();
+  </script>
+</body>
+</html>

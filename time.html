@@ -1,0 +1,349 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Time Consumers</title>
+<link rel="stylesheet" href="styles.css">
+<div id="game-wrapper">
+  <div id="top-space"></div>
+  <a href="index.html" id="back-btn">← MENU</a>
+  <div id="overlay">
+    <div class="overlay-content">
+      <h2>TIME CONSUMERS</h2>
+      <div class="controls-section">
+        <h3>Mobile</h3>
+        <p>Tap left edge to move left</p>
+        <p>Tap right edge to move right</p>
+        <p>Tap center to shoot</p>
+      </div>
+      <div class="controls-section">
+        <h3>Keyboard</h3>
+        <p>← → Arrow Keys to move</p>
+        <p>Space to shoot</p>
+        <p>R to restart</p>
+      </div>
+    </div>
+    <button id="start-btn">START GAME</button>
+  </div>
+  <div id="canvas-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+  </div>
+  <div id="bottom-space"></div>
+</div>
+<div id="stats">
+  <div id="scoreDisplay">0</div>
+  <div id="statusDisplay"></div>
+</div>
+<script>
+// ===== 1. CONSTANTS & CONFIGURATION =====
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 600;
+
+const PLAYER_WIDTH = 60;
+const PLAYER_HEIGHT = 30;
+const PLAYER_START_X = 370;
+const PLAYER_START_Y = 540;
+
+const BULLET_WIDTH = 10;
+const BULLET_HEIGHT = 10;
+const BULLET_SPEED = 0.4;
+
+const ENEMY_WIDTH = 60;
+const ENEMY_HEIGHT = 30;
+const ENEMY_INITIAL_SPEED = 0.5;
+const ENEMY_ACCELERATION = 0.15;
+
+const GRID_COLS = 8;
+const GRID_ROWS = 5;
+const SCREEN_EDGE_LEFT = 0.2;
+const SCREEN_EDGE_RIGHT = 0.8;
+const WAITTIME_AFTER_EDGE = 4;
+const POINTS_PER_KILL = 10;
+
+// ===== 2. UI ELEMENTS & DOM REFERENCES =====
+const canvasElement = document.getElementById('gameCanvas');
+const canvasContext = canvasElement.getContext('2d');
+const startButton = document.getElementById('start-btn');
+const overlayElement = document.getElementById('overlay');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const statusDisplay = document.getElementById('statusDisplay');
+
+// ===== 3. GAME STATE =====
+let playerObject = {};
+let bulletsArray = [];
+let enemiesArray = [];
+let enemyDirection = 1;
+let enemySpeed = ENEMY_INITIAL_SPEED;
+let waitTime = 0;
+let playerScore = 0;
+let isGameOver = false;
+let gameStarted = false;
+let lastTimestamp = 0;
+let keysPressed = {};
+let leftPressed = false;
+let rightPressed = false;
+
+// ===== 4. RENDERING SYSTEM =====
+function drawBackground() {
+  canvasElement.width = CANVAS_WIDTH;
+  canvasElement.height = CANVAS_HEIGHT;
+}
+
+function drawPlayer() {
+  canvasContext.fillStyle = '#ef4444';
+  canvasContext.fillRect(playerObject.x, playerObject.y, PLAYER_WIDTH, PLAYER_HEIGHT);
+}
+
+function drawEnemies() {
+  canvasContext.fillStyle = '#ef4444';
+  for (let enemy of enemiesArray) {
+    if (enemy.isActive) {
+      canvasContext.fillRect(enemy.x, enemy.y, ENEMY_WIDTH, ENEMY_HEIGHT);
+    }
+  }
+}
+
+function drawBullets() {
+  canvasContext.fillStyle = '#fbbf24';
+  for (let bullet of bulletsArray) {
+    canvasContext.fillRect(bullet.x, bullet.y, BULLET_WIDTH, BULLET_HEIGHT);
+  }
+}
+
+function renderFrame() {
+  drawBackground();
+  drawPlayer();
+  drawEnemies();
+  drawBullets();
+}
+
+function updateHUD(score, message) {
+  scoreDisplay.innerHTML = score;
+  statusDisplay.innerHTML = message;
+}
+
+// ===== 5. MOVEMENT & PHYSICS SYSTEM =====
+function updatePlayerMovement(deltaTime) {
+  const movementSpeed = 0.36 * deltaTime;
+  
+  if (leftPressed || keysPressed['ArrowLeft']) {
+    playerObject.x -= movementSpeed;
+  }
+  if (rightPressed || keysPressed['ArrowRight']) {
+    playerObject.x += movementSpeed;
+  }
+  
+  // Clamp player to bounds
+  playerObject.x = Math.max(0, Math.min(CANVAS_WIDTH - PLAYER_WIDTH, playerObject.x));
+}
+
+function updateBulletMovement(deltaTime) {
+  for (let i = bulletsArray.length - 1; i >= 0; i--) {
+    bulletsArray[i].y -= BULLET_SPEED * deltaTime;
+    if (bulletsArray[i].y < -10) {
+      bulletsArray.splice(i, 1);
+    }
+  }
+}
+
+function updateEnemyMovement(deltaTime) {
+  const activeEnemies = enemiesArray.filter(e => e.isActive);
+  if (activeEnemies.length === 0) return;
+  
+  const enemyMovementSpeed = enemySpeed * 0.19 * deltaTime;
+  
+  if (waitTime > 0) {
+    // Moving down after edge hit
+    const moveAmount = Math.min(waitTime, enemyMovementSpeed);
+    activeEnemies.forEach(e => e.y += moveAmount);
+    waitTime -= moveAmount;
+    if (waitTime <= 0) {
+      enemySpeed += ENEMY_ACCELERATION;
+    }
+  } else {
+    // Moving horizontally
+    activeEnemies.forEach(e => e.x += enemyDirection * enemyMovementSpeed);
+    
+    // Check edge collision
+    const minX = Math.min(...activeEnemies.map(e => e.x));
+    const maxX = Math.max(...activeEnemies.map(e => e.x + ENEMY_WIDTH));
+    
+    if (minX < 0) {
+      activeEnemies.forEach(e => e.x -= minX);
+      waitTime = WAITTIME_AFTER_EDGE;
+      enemyDirection = 1;
+    } else if (maxX > CANVAS_WIDTH) {
+      activeEnemies.forEach(e => e.x += CANVAS_WIDTH - maxX);
+      waitTime = WAITTIME_AFTER_EDGE;
+      enemyDirection = -1;
+    }
+  }
+}
+
+// ===== 6. GAME CONDITIONS & COLLISION =====
+function isRectColliding(rect1, w1, h1, rect2, w2, h2) {
+  return rect1.x < rect2.x + w2 &&
+         rect1.x + w1 > rect2.x &&
+         rect1.y < rect2.y + h2 &&
+         rect1.y + h1 > rect2.y;
+}
+
+function checkBulletEnemyCollisions() {
+  for (let bulletIdx = bulletsArray.length - 1; bulletIdx >= 0; bulletIdx--) {
+    const bullet = bulletsArray[bulletIdx];
+    
+    for (let enemyIdx = enemiesArray.length - 1; enemyIdx >= 0; enemyIdx--) {
+      const enemy = enemiesArray[enemyIdx];
+      
+      if (enemy.isActive && isRectColliding(bullet, BULLET_WIDTH, BULLET_HEIGHT, enemy, ENEMY_WIDTH, ENEMY_HEIGHT)) {
+        enemy.isActive = false;
+        bulletsArray.splice(bulletIdx, 1);
+        playerScore += POINTS_PER_KILL;
+        updateHUD(playerScore, '');
+        break;
+      }
+    }
+  }
+}
+
+function checkEndConditions() {
+  const activeEnemies = enemiesArray.filter(e => e.isActive);
+  
+  if (activeEnemies.length === 0) {
+    isGameOver = true;
+    updateHUD(playerScore, 'Win - Restart');
+    return;
+  }
+  
+  for (let enemy of activeEnemies) {
+    if (enemy.y + ENEMY_HEIGHT >= playerObject.y) {
+      isGameOver = true;
+      updateHUD(playerScore, 'Lose - Restart');
+      return;
+    }
+  }
+}
+
+// ===== 7. GAME LOGIC & INITIALIZATION =====
+function spawnEnemyWave() {
+  enemiesArray = [];
+  for (let i = 0; i < GRID_COLS * GRID_ROWS; i++) {
+    enemiesArray.push({
+      x: 64 + (i % GRID_COLS) * 84,
+      y: 50 + Math.floor(i / GRID_COLS) * 54,
+      isActive: true
+    });
+  }
+}
+
+function resetGameState() {
+  playerObject = { x: PLAYER_START_X, y: PLAYER_START_Y };
+  bulletsArray = [];
+  enemyDirection = 1;
+  enemySpeed = ENEMY_INITIAL_SPEED;
+  waitTime = 0;
+  playerScore = 0;
+  isGameOver = false;
+  lastTimestamp = 0;
+  spawnEnemyWave();
+  updateHUD(playerScore, 'Tap left/right edges to move, tap center to shoot');
+}
+
+function initializeGame() {
+  gameStarted = true;
+  overlayElement.classList.add('hidden');
+  resetGameState();
+}
+
+function updateGameLogic(deltaTime) {
+  if (isGameOver) return;
+  
+  updatePlayerMovement(deltaTime);
+  updateBulletMovement(deltaTime);
+  updateEnemyMovement(deltaTime);
+  checkBulletEnemyCollisions();
+  checkEndConditions();
+}
+
+// ===== 8. CONTROLS SYSTEM =====
+function shootBullet() {
+  bulletsArray.push({ x: playerObject.x + 30, y: playerObject.y - PLAYER_HEIGHT });
+}
+
+function getTouchZones(screenWidth) {
+  return {
+    leftZone: screenWidth * SCREEN_EDGE_LEFT,
+    rightZone: screenWidth * SCREEN_EDGE_RIGHT
+  };
+}
+
+function handleTouchStart(touchEvent) {
+  if (!gameStarted || isGameOver) return;
+  
+  const touch = touchEvent.touches[0];
+  const { leftZone, rightZone } = getTouchZones(window.innerWidth);
+  
+  if (touch.clientX < leftZone) {
+    leftPressed = true;
+  } else if (touch.clientX > rightZone) {
+    rightPressed = true;
+  } else {
+    shootBullet();
+  }
+}
+
+function handleTouchEnd() {
+  leftPressed = false;
+  rightPressed = false;
+}
+
+function setupStartButtonListeners() {
+  startButton.addEventListener('click', initializeGame);
+  startButton.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    initializeGame();
+  });
+}
+
+function setupTouchControls() {
+  document.addEventListener('touchstart', handleTouchStart);
+  document.addEventListener('touchend', handleTouchEnd);
+}
+
+function setupKeyboardControls() {
+  window.addEventListener('keydown', (e) => {
+    keysPressed[e.code] = true;
+    
+    if (!gameStarted) return;
+    
+    if (e.code === 'KeyR') {
+      resetGameState();
+    } else if (e.code === 'Space') {
+      shootBullet();
+    }
+  });
+  
+  window.addEventListener('keyup', (e) => {
+    keysPressed[e.code] = false;
+  });
+}
+
+// ===== 9. MAIN GAME LOOP =====
+function gameLoop(timestamp) {
+  if (gameStarted) {
+    if (!lastTimestamp) lastTimestamp = timestamp;
+    const deltaTime = timestamp - lastTimestamp;
+    lastTimestamp = timestamp;
+    updateGameLogic(deltaTime);
+  }
+  
+  renderFrame();
+  requestAnimationFrame(gameLoop);
+}
+
+// Initialize controls and start loop
+setupStartButtonListeners();
+setupTouchControls();
+setupKeyboardControls();
+resetGameState();
+requestAnimationFrame(gameLoop);
+</script>
