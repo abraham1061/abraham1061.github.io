@@ -11,9 +11,9 @@
       <h2>TIME CONSUMERS</h2>
       <div class="controls-section">
         <h3>Mobile</h3>
-        <p>Tap left edge to move left</p>
-        <p>Tap right edge to move right</p>
-        <p>Tap center to shoot</p>
+        <p>Tap left button to move left</p>
+        <p>Tap right button to move right</p>
+        <p>Tap screen to shoot</p>
       </div>
       <div class="controls-section">
         <h3>Keyboard</h3>
@@ -28,6 +28,10 @@
     <canvas id="gameCanvas" width="800" height="600"></canvas>
   </div>
   <div id="bottom-space"></div>
+  <div id="run-controls">
+    <button id="left-btn" class="btn">LEFT</button>
+    <button id="right-btn" class="btn">RIGHT</button>
+  </div>
 </div>
 <div id="stats">
   <div id="scoreDisplay">0</div>
@@ -66,6 +70,9 @@ const startButton = document.getElementById('start-btn');
 const overlayElement = document.getElementById('overlay');
 const scoreDisplay = document.getElementById('scoreDisplay');
 const statusDisplay = document.getElementById('statusDisplay');
+const leftButton = document.getElementById('left-btn');
+const rightButton = document.getElementById('right-btn');
+const controlsElement = document.getElementById('run-controls');
 
 // ===== 3. GAME STATE =====
 let playerObject = {};
@@ -109,11 +116,37 @@ function drawBullets() {
   }
 }
 
+function drawGameOver() {
+  canvasContext.fillStyle = 'rgba(0,0,0,0.7)';
+  canvasContext.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  
+  canvasContext.fillStyle = '#ef4444';
+  canvasContext.font = 'bold 60px Arial';
+  canvasContext.textAlign = 'center';
+  canvasContext.fillText('GAME OVER!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
+  
+  canvasContext.fillStyle = '#FFF';
+  canvasContext.font = '20px Arial';
+  canvasContext.fillText('Press R to Restart', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+  
+  canvasContext.fillStyle = '#fbbf24';
+  canvasContext.fillRect(CANVAS_WIDTH / 2 - 100, CANVAS_HEIGHT / 2 + 50, 200, 60);
+  canvasContext.strokeStyle = '#FFF';
+  canvasContext.lineWidth = 3;
+  canvasContext.strokeRect(CANVAS_WIDTH / 2 - 100, CANVAS_HEIGHT / 2 + 50, 200, 60);
+  canvasContext.fillStyle = '#FFF';
+  canvasContext.font = 'bold 24px Arial';
+  canvasContext.fillText('RESTART', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 88);
+}
+
 function renderFrame() {
   drawBackground();
   drawPlayer();
   drawEnemies();
   drawBullets();
+  if (isGameOver) {
+    drawGameOver();
+  }
 }
 
 function updateHUD(score, message) {
@@ -210,14 +243,12 @@ function checkEndConditions() {
   
   if (activeEnemies.length === 0) {
     isGameOver = true;
-    updateHUD(playerScore, 'Win - Restart');
     return;
   }
   
   for (let enemy of activeEnemies) {
     if (enemy.y + ENEMY_HEIGHT >= playerObject.y) {
       isGameOver = true;
-      updateHUD(playerScore, 'Lose - Restart');
       return;
     }
   }
@@ -245,12 +276,13 @@ function resetGameState() {
   isGameOver = false;
   lastTimestamp = 0;
   spawnEnemyWave();
-  updateHUD(playerScore, 'Tap left/right edges to move, tap center to shoot');
+  updateHUD(playerScore, 'Tap buttons to move, tap screen to shoot');
 }
 
 function initializeGame() {
   gameStarted = true;
   overlayElement.classList.add('hidden');
+  controlsElement.classList.add('show');
   resetGameState();
 }
 
@@ -269,31 +301,41 @@ function shootBullet() {
   bulletsArray.push({ x: playerObject.x + 30, y: playerObject.y - PLAYER_HEIGHT });
 }
 
-function getTouchZones(screenWidth) {
+function isOnRestartButton(x, y) {
+  const bx = CANVAS_WIDTH / 2, by = CANVAS_HEIGHT / 2 + 80, bw = 100, bh = 30;
+  return x >= bx - bw && x <= bx + bw && y >= by - bh && y <= by + bh;
+}
+
+function getCanvasCoordinates(clientX, clientY) {
+  const rect = canvasElement.getBoundingClientRect();
   return {
-    leftZone: screenWidth * SCREEN_EDGE_LEFT,
-    rightZone: screenWidth * SCREEN_EDGE_RIGHT
+    x: (clientX - rect.left) * (CANVAS_WIDTH / rect.width),
+    y: (clientY - rect.top) * (CANVAS_HEIGHT / rect.height)
   };
 }
 
 function handleTouchStart(touchEvent) {
   if (!gameStarted || isGameOver) return;
-  
-  const touch = touchEvent.touches[0];
-  const { leftZone, rightZone } = getTouchZones(window.innerWidth);
-  
-  if (touch.clientX < leftZone) {
-    leftPressed = true;
-  } else if (touch.clientX > rightZone) {
-    rightPressed = true;
-  } else {
-    shootBullet();
-  }
+  shootBullet();
 }
 
 function handleTouchEnd() {
   leftPressed = false;
   rightPressed = false;
+}
+
+function setupButtonControls() {
+  leftButton.addEventListener('touchstart', (e) => { e.preventDefault(); leftPressed = true; });
+  leftButton.addEventListener('touchend', (e) => { e.preventDefault(); leftPressed = false; });
+  leftButton.addEventListener('mousedown', () => { leftPressed = true; });
+  leftButton.addEventListener('mouseup', () => { leftPressed = false; });
+  leftButton.addEventListener('mouseleave', () => { leftPressed = false; });
+  
+  rightButton.addEventListener('touchstart', (e) => { e.preventDefault(); rightPressed = true; });
+  rightButton.addEventListener('touchend', (e) => { e.preventDefault(); rightPressed = false; });
+  rightButton.addEventListener('mousedown', () => { rightPressed = true; });
+  rightButton.addEventListener('mouseup', () => { rightPressed = false; });
+  rightButton.addEventListener('mouseleave', () => { rightPressed = false; });
 }
 
 function setupStartButtonListeners() {
@@ -316,7 +358,11 @@ function setupKeyboardControls() {
     if (!gameStarted) return;
     
     if (e.code === 'KeyR') {
-      resetGameState();
+      if (isGameOver) {
+        location.reload();
+      } else {
+        resetGameState();
+      }
     } else if (e.code === 'Space') {
       shootBullet();
     }
@@ -324,6 +370,21 @@ function setupKeyboardControls() {
   
   window.addEventListener('keyup', (e) => {
     keysPressed[e.code] = false;
+  });
+}
+
+function setupCanvasClickControls() {
+  canvasElement.addEventListener('click', (e) => {
+    if (!isGameOver) return;
+    const coords = getCanvasCoordinates(e.clientX, e.clientY);
+    if (isOnRestartButton(coords.x, coords.y)) location.reload();
+  });
+  
+  canvasElement.addEventListener('touchend', (e) => {
+    if (!isGameOver) return;
+    const touch = e.changedTouches[0];
+    const coords = getCanvasCoordinates(touch.clientX, touch.clientY);
+    if (isOnRestartButton(coords.x, coords.y)) location.reload();
   });
 }
 
@@ -342,8 +403,10 @@ function gameLoop(timestamp) {
 
 // Initialize controls and start loop
 setupStartButtonListeners();
+setupButtonControls();
 setupTouchControls();
 setupKeyboardControls();
+setupCanvasClickControls();
 resetGameState();
 requestAnimationFrame(gameLoop);
 </script>

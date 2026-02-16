@@ -15,10 +15,10 @@
           <h2>SNAKE</h2>
           <div class="controls-section">
             <h3>Mobile</h3>
-            <p>Tap up to move up</p>
-            <p>Tap down to move down</p>
-            <p>Tap left to move left</p>
-            <p>Tap right to move right</p>
+            <p>Swipe up to move up</p>
+            <p>Swipe down to move down</p>
+            <p>Swipe left to move left</p>
+            <p>Swipe right to move right</p>
           </div>
           <div class="controls-section">
             <h3>Keyboard</h3>
@@ -237,6 +237,47 @@ function setupKeyboardControls() {
 
 function setupMobileControls() {
   restartButton.addEventListener('click', initializeGame);
+  
+  // Swipe detection for mobile
+  let touchStartX = 0;
+  let touchStartY = 0;
+  const minSwipeDistance = 30;
+  
+  canvasElement.addEventListener('touchstart', (e) => {
+    if (!gameStarted || !gameLoopInterval) return;
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+  });
+  
+  canvasElement.addEventListener('touchend', (e) => {
+    if (!gameStarted || !gameLoopInterval) return;
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    
+    // Determine if swipe is significant enough
+    if (Math.abs(deltaX) < minSwipeDistance && Math.abs(deltaY) < minSwipeDistance) {
+      return;
+    }
+    
+    // Determine primary direction
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      // Horizontal swipe
+      if (deltaX > 0) {
+        tryChangeDirection(DIRECTION_MAP['R']);
+      } else {
+        tryChangeDirection(DIRECTION_MAP['L']);
+      }
+    } else {
+      // Vertical swipe
+      if (deltaY > 0) {
+        tryChangeDirection(DIRECTION_MAP['D']);
+      } else {
+        tryChangeDirection(DIRECTION_MAP['U']);
+      }
+    }
+  });
 }
 
 // ===== 9. MAIN GAME LOOP =====
