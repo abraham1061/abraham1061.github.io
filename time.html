@@ -1,44 +1,17 @@
 <!doctype html>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-<title>Time Consumers</title>
-<link rel="stylesheet" href="styles.css">
-<div id="game-wrapper">
-  <div id="top-space"></div>
-  <a href="index.html" id="back-btn">← MENU</a>
-  <div id="overlay">
-    <div class="overlay-content">
-      <h2>TIME CONSUMERS</h2>
-      <div class="controls-section">
-        <h3>Mobile</h3>
-        <p>Tap left button to move left</p>
-        <p>Tap right button to move right</p>
-        <p>Tap screen to shoot</p>
-      </div>
-      <div class="controls-section">
-        <h3>Keyboard</h3>
-        <p>← → Arrow Keys to move</p>
-        <p>Space to shoot</p>
-        <p>R to restart</p>
-      </div>
-    </div>
-    <button id="start-btn">START GAME</button>
-  </div>
-  <div id="canvas-container">
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
-  </div>
-  <div id="bottom-space"></div>
-  <div id="run-controls">
-    <button id="left-btn" class="btn">LEFT</button>
-    <button id="right-btn" class="btn">RIGHT</button>
-  </div>
-</div>
-<div id="stats">
-  <div id="scoreDisplay">0</div>
-  <div id="statusDisplay"></div>
-</div>
-<script>
-// ===== 1. CONSTANTS & CONFIGURATION =====
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Time Consumers</title>
+    <link rel="stylesheet" href="styles.css">
+    <script>
+// ===== TOGGLEABLE CONFIGURATION =====
+const ENEMY_INITIAL_SPEED = 0.5;
+const ENEMY_ACCELERATION = 0.15;
+const PLAYER_MOVEMENT_SPEED = 0.36;
+
+// ===== CONSTANTS & CONFIGURATION =====
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
 
@@ -53,29 +26,18 @@ const BULLET_SPEED = 0.4;
 
 const ENEMY_WIDTH = 60;
 const ENEMY_HEIGHT = 30;
-const ENEMY_INITIAL_SPEED = 0.5;
-const ENEMY_ACCELERATION = 0.15;
 
 const GRID_COLS = 8;
 const GRID_ROWS = 5;
-const SCREEN_EDGE_LEFT = 0.2;
-const SCREEN_EDGE_RIGHT = 0.8;
 const WAITTIME_AFTER_EDGE = 4;
 const POINTS_PER_KILL = 10;
 
-// ===== 2. UI ELEMENTS & DOM REFERENCES =====
-const canvasElement = document.getElementById('gameCanvas');
-const canvasContext = canvasElement.getContext('2d');
-const startButton = document.getElementById('start-btn');
-const overlayElement = document.getElementById('overlay');
-const scoreDisplay = document.getElementById('scoreDisplay');
-const statusDisplay = document.getElementById('statusDisplay');
-const leftButton = document.getElementById('left-btn');
-const rightButton = document.getElementById('right-btn');
-const controlsElement = document.getElementById('run-controls');
+// ===== UI ELEMENTS & DOM REFERENCES =====
+let canvasElement, canvasContext, startButton, overlayElement;
+let scoreDisplay, statusDisplay, leftButton, rightButton, controlsElement;
 
-// ===== 3. GAME STATE =====
-let playerObject = {};
+// ===== GAME STATE =====
+let playerObject = { x: 0, y: 0 };
 let bulletsArray = [];
 let enemiesArray = [];
 let enemyDirection = 1;
@@ -89,7 +51,7 @@ let keysPressed = {};
 let leftPressed = false;
 let rightPressed = false;
 
-// ===== 4. RENDERING SYSTEM =====
+// ===== RENDERING SYSTEM =====
 function drawBackground() {
   canvasElement.width = CANVAS_WIDTH;
   canvasElement.height = CANVAS_HEIGHT;
@@ -154,9 +116,9 @@ function updateHUD(score, message) {
   statusDisplay.innerHTML = message;
 }
 
-// ===== 5. MOVEMENT & PHYSICS SYSTEM =====
+// ===== MOVEMENT & PHYSICS SYSTEM =====
 function updatePlayerMovement(deltaTime) {
-  const movementSpeed = 0.36 * deltaTime;
+  const movementSpeed = PLAYER_MOVEMENT_SPEED * deltaTime;
   
   if (leftPressed || keysPressed['ArrowLeft']) {
     playerObject.x -= movementSpeed;
@@ -196,9 +158,13 @@ function updateEnemyMovement(deltaTime) {
     // Moving horizontally
     activeEnemies.forEach(e => e.x += enemyDirection * enemyMovementSpeed);
     
-    // Check edge collision
-    const minX = Math.min(...activeEnemies.map(e => e.x));
-    const maxX = Math.max(...activeEnemies.map(e => e.x + ENEMY_WIDTH));
+    // Check edge collision - optimized without spread operator
+    let minX = Infinity, maxX = -Infinity;
+    for (let e of activeEnemies) {
+      if (e.x < minX) minX = e.x;
+      const right = e.x + ENEMY_WIDTH;
+      if (right > maxX) maxX = right;
+    }
     
     if (minX < 0) {
       activeEnemies.forEach(e => e.x -= minX);
@@ -212,7 +178,7 @@ function updateEnemyMovement(deltaTime) {
   }
 }
 
-// ===== 6. GAME CONDITIONS & COLLISION =====
+// ===== GAME CONDITIONS & COLLISION =====
 function isRectColliding(rect1, w1, h1, rect2, w2, h2) {
   return rect1.x < rect2.x + w2 &&
          rect1.x + w1 > rect2.x &&
@@ -254,7 +220,7 @@ function checkEndConditions() {
   }
 }
 
-// ===== 7. GAME LOGIC & INITIALIZATION =====
+// ===== GAME LOGIC & INITIALIZATION =====
 function spawnEnemyWave() {
   enemiesArray = [];
   for (let i = 0; i < GRID_COLS * GRID_ROWS; i++) {
@@ -296,7 +262,7 @@ function updateGameLogic(deltaTime) {
   checkEndConditions();
 }
 
-// ===== 8. CONTROLS SYSTEM =====
+// ===== CONTROLS SYSTEM =====
 function shootBullet() {
   bulletsArray.push({ x: playerObject.x + 30, y: playerObject.y - PLAYER_HEIGHT });
 }
@@ -388,7 +354,7 @@ function setupCanvasClickControls() {
   });
 }
 
-// ===== 9. MAIN GAME LOOP =====
+// ===== MAIN GAME LOOP =====
 function gameLoop(timestamp) {
   if (gameStarted) {
     if (!lastTimestamp) lastTimestamp = timestamp;
@@ -401,12 +367,64 @@ function gameLoop(timestamp) {
   requestAnimationFrame(gameLoop);
 }
 
-// Initialize controls and start loop
-setupStartButtonListeners();
-setupButtonControls();
-setupTouchControls();
-setupKeyboardControls();
-setupCanvasClickControls();
-resetGameState();
-requestAnimationFrame(gameLoop);
-</script>
+// ===== INITIALIZATION =====
+document.addEventListener('DOMContentLoaded', () => {
+  // Get DOM references
+  canvasElement = document.getElementById('time-canvas');
+  canvasContext = canvasElement.getContext('2d');
+  startButton = document.getElementById('start-btn');
+  overlayElement = document.getElementById('start-overlay');
+  scoreDisplay = document.getElementById('score-display');
+  statusDisplay = document.getElementById('status-display');
+  leftButton = document.getElementById('left-btn');
+  rightButton = document.getElementById('right-btn');
+  controlsElement = document.getElementById('time-controls');
+  
+  // Initialize controls and start loop
+  setupStartButtonListeners();
+  setupButtonControls();
+  setupTouchControls();
+  setupKeyboardControls();
+  setupCanvasClickControls();
+  resetGameState();
+  requestAnimationFrame(gameLoop);
+});
+    </script>
+  </head>
+  <body>
+    <div id="time-game-container">
+      <div id="top-space"></div>
+      <a href="index.html" id="back-btn">← MENU</a>
+      <div id="start-overlay">
+        <div class="start-overlay-content">
+          <h2>TIME CONSUMERS</h2>
+          <div class="controls-section">
+            <h3>Mobile</h3>
+            <p>Tap left button to move left</p>
+            <p>Tap right button to move right</p>
+            <p>Tap screen to shoot</p>
+          </div>
+          <div class="controls-section">
+            <h3>Keyboard</h3>
+            <p>← → Arrow Keys to move</p>
+            <p>Space to shoot</p>
+            <p>R to restart</p>
+          </div>
+        </div>
+        <button id="start-btn">START GAME</button>
+      </div>
+      <div id="time-canvas-container">
+        <canvas id="time-canvas" width="800" height="600"></canvas>
+      </div>
+      <div id="bottom-space"></div>
+      <div id="time-controls">
+        <button id="left-btn" class="btn">LEFT</button>
+        <button id="right-btn" class="btn">RIGHT</button>
+      </div>
+    </div>
+    <div id="time-stats">
+      <div id="score-display">0</div>
+      <div id="status-display"></div>
+    </div>
+  </body>
+</html>

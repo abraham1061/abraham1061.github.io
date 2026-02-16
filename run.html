@@ -5,59 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <title>2D Sidescroller - Mobile</title>
   <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <a href="index.html" id="back-btn">← MENU</a>
-  <div id="overlay">
-    <div class="overlay-content">
-      <h2>RUN</h2>
-      <div class="controls-section">
-        <h3>Mobile</h3>
-        <p>Tap left button to jump</p>
-        <p>Tap right button to shield</p>
-      </div>
-      <div class="controls-section">
-        <h3>Keyboard</h3>
-        <p>↑ Arrow Up to jump</p>
-        <p>D to shield</p>
-        <p>R to restart</p>
-      </div>
-    </div>
-    <button id="start-btn">START GAME</button>
-  </div>
-  <div id="run-info"><p>Keyboard: ↑ Jump | D Shield | R Restart</p></div>
-  <div id="run-container">
-    <canvas id="run-canvas" width="800" height="600"></canvas>
-    <div id="run-controls">
-      <button id="jump-btn" class="btn">JUMP UP</button>
-      <button id="shield-btn" class="btn">SHIELD</button>
-    </div>
-  </div>
   <script>
-// ===== 1. CONSTANTS & CONFIGURATION =====
+// ===== TOGGLEABLE CONFIGURATION =====
+const PLAYER_INITIAL_SPEED = 2;
+const ENEMY_SPEED = 0.05; // Rock float speed (animation)
+const COIN_SPEED = 0.08; // Coin float speed (animation)
+const SHIELD_MODE_DURATION = 90; // Frames
+const ACCELERATION_PER_COIN = 0.1;
+
+// ===== CONSTANTS & CONFIGURATION =====
 const CANVAS_WIDTH = 800, CANVAS_HEIGHT = 600;
 const CANVAS_Y = 0;
 const PLATFORM_Y = CANVAS_HEIGHT - 150;
 const GRAVITY = 0.6;
 const PLAYER_WIDTH = 60, PLAYER_HEIGHT = 150;
 const JUMP_POWER = 15;
-const ACCELERATION_START = 2;
 const GAP_WIDTH = 180, GAP_MIN_DISTANCE = 450, GAP_MAX_DISTANCE = 750;
 const COIN_SPAWN_INTERVAL = 100, ROCK_SPAWN_INTERVAL = 500;
-const SHIELD_PROTECTION_DURATION = 90;
 const INITIAL_COIN_POSITIONS = [400, 800, 1200, 1600, 2000, 2400, 2800];
 const TWO_PI = 2 * Math.PI;
 
-// ===== 2. UI ELEMENTS & DOM REFERENCES =====
-const canvasElement = document.getElementById('run-canvas');
-const canvasContext = canvasElement.getContext('2d');
-const overlayElement = document.getElementById('overlay');
-const controlsElement = document.getElementById('run-controls');
-const startButton = document.getElementById('start-btn');
-const jumpButton = document.getElementById('jump-btn');
-const shieldButton = document.getElementById('shield-btn');
+// ===== UI ELEMENTS & DOM REFERENCES =====
+let canvasElement, canvasContext, overlayElement, controlsElement;
+let startButton, jumpButton, shieldButton;
 
-// ===== 3. GAME STATE =====
+// ===== GAME STATE =======
 const playerObject = {
   x: 500, y: PLATFORM_Y - PLAYER_HEIGHT,
   w: PLAYER_WIDTH, h: PLAYER_HEIGHT,
@@ -67,7 +39,7 @@ const playerObject = {
 
 let isGameOver = false;
 let playerScore = 0;
-let currentSpeed = ACCELERATION_START;
+let currentSpeed = PLAYER_INITIAL_SPEED;
 let gameStarted = false;
 let coinsAndRocksArray = [];
 let platformGapsArray = [];
@@ -77,7 +49,7 @@ let maxSpawnedX = 2800;
 let nextRockSpawnX = 1800;
 let nextGapSpawnX = 1000;
 
-// ===== 4. RENDERING SYSTEM =====
+// ===== RENDERING SYSTEM =====
 function fillCircle(x, y, r) {
   canvasContext.beginPath();
   canvasContext.arc(x, y, r, 0, TWO_PI);
@@ -105,7 +77,8 @@ function drawPlatform() {
   const drawEnd = playerObject.x + CANVAS_WIDTH * 2;
   let startX = 0;
   
-  for (let gap of platformGapsArray.sort((a, b) => a.x - b.x)) {
+  // platformGapsArray is kept sorted when modified
+  for (let gap of platformGapsArray) {
     gap.x > startX && canvasContext.fillRect(startX, PLATFORM_Y, gap.x - startX, 150);
     startX = gap.x + gap.w;
   }
@@ -280,7 +253,7 @@ function renderFrame() {
   drawHUD();
 }
 
-// ===== 5. MOVEMENT & PHYSICS SYSTEM =====
+// ===== MOVEMENT & PHYSICS SYSTEM =====
 function updatePlayerPhysics() {
   // Horizontal movement
   playerObject.vx = currentSpeed;
@@ -337,7 +310,7 @@ function checkFallDeathCondition() {
   if (playerObject.y > CANVAS_HEIGHT) isGameOver = true;
 }
 
-// ===== 6. GAME CONDITIONS & COLLISION =====
+// ===== GAME CONDITIONS & COLLISION =====
 function updateEnemyAnimations() {
   for (let enemy of coinsAndRocksArray) {
     enemy.fp += enemy.fs;
@@ -364,20 +337,20 @@ function checkEnemyCollisions() {
         if (!playerObject.ph) isGameOver = true;
       } else {
         playerScore++;
-        currentSpeed = ACCELERATION_START + playerScore * 0.1;
+        currentSpeed = PLAYER_INITIAL_SPEED + playerScore * ACCELERATION_PER_COIN;
         coinsAndRocksArray.splice(i, 1);
       }
     }
   }
 }
 
-// ===== 7. GAME LOGIC & SPAWNING =====
+// ===== GAME LOGIC & SPAWNING =====
 function createCoinOrRock(x, type = 'g') {
   return {
     x: x, by: (CANVAS_Y + PLATFORM_Y) / 2, y: 0,
     r: 20, t: type, c: type === 'r' ? '#ef4444' : '#fbbf24',
     fp: Math.random() * TWO_PI,
-    fs: type === 'r' ? .05 : .08,
+    fs: type === 'r' ? ENEMY_SPEED : COIN_SPEED,
     fr: (PLATFORM_Y - CANVAS_Y) / 2 - 40
   };
 }
@@ -398,7 +371,7 @@ function spawnRocks() {
 }
 
 function spawnGaps() {
-  const speedMult = 1 + (currentSpeed - ACCELERATION_START) * .15;
+  const speedMult = 1 + (currentSpeed - PLAYER_INITIAL_SPEED) * .15;
   const minDist = GAP_MIN_DISTANCE * speedMult;
   const maxDist = GAP_MAX_DISTANCE * speedMult;
   
@@ -406,6 +379,8 @@ function spawnGaps() {
     platformGapsArray.push({ x: nextGapSpawnX, w: GAP_WIDTH });
     nextGapSpawnX += minDist + Math.random() * (maxDist - minDist);
   }
+  // Keep array sorted for efficient rendering
+  platformGapsArray.sort((a, b) => a.x - b.x);
 }
 
 function cleanupOffscreenObjects() {
@@ -416,7 +391,7 @@ function cleanupOffscreenObjects() {
 function initializeGame() {
   isGameOver = false;
   playerScore = 0;
-  currentSpeed = ACCELERATION_START;
+  currentSpeed = PLAYER_INITIAL_SPEED;
   maxSpawnedX = 2800;
   nextRockSpawnX = 1800;
   nextGapSpawnX = 1000;
@@ -448,7 +423,7 @@ function updateGameLogic() {
   cleanupOffscreenObjects();
 }
 
-// ===== 8. CONTROLS SYSTEM =====
+// ===== CONTROLS SYSTEM =====
 function performJump() {
   if (!gameStarted || isGameOver || playerObject.jr <= 0) return;
   playerObject.vy = -JUMP_POWER;
@@ -460,7 +435,7 @@ function performJump() {
 function activateShield() {
   if (!gameStarted || isGameOver || playerObject.ph) return;
   playerObject.ph = true;
-  playerObject.pt = SHIELD_PROTECTION_DURATION;
+  playerObject.pt = SHIELD_MODE_DURATION;
 }
 
 function isOnRestartButton(x, y) {
@@ -519,20 +494,53 @@ function setupCanvasClickControls() {
   });
 }
 
-// ===== 9. MAIN GAME LOOP =====
-function gameLoop() {
-  if (gameStarted) updateGameLogic();
-  renderFrame();
-  requestAnimationFrame(gameLoop);
-}
-
-// Initialize controls and start game loop
-setupStartButtonListeners();
-setupMobileControls();
-setupKeyboardControls();
-setupCanvasClickControls();
-initializeGame();
-gameLoop();
-  </script>
-</body>
+// ===== INITIALIZATION =====
+document.addEventListener('DOMContentLoaded', () => {
+  // Get DOM references
+  canvasElement = document.getElementById('run-canvas');
+  canvasContext = canvasElement.getContext('2d');
+  overlayElement = document.getElementById('start-overlay');
+  controlsElement = document.getElementById('run-controls');
+  startButton = document.getElementById('start-btn');
+  jumpButton = document.getElementById('jump-btn');
+  shieldButton = document.getElementById('shield-btn');
+  
+  // Initialize controls and start game loop
+  setupStartButtonListeners();
+  setupMobileControls();
+  setupKeyboardControls();
+  setupCanvasClickControls();
+  initializeGame();
+  gameLoop();
+});
+    </script>
+  </head>
+  <body>
+    <a href="index.html" id="back-btn">← MENU</a>
+    <div id="start-overlay">
+      <div class="start-overlay-content">
+        <h2>RUN</h2>
+        <div class="controls-section">
+          <h3>Mobile</h3>
+          <p>Tap left button to jump</p>
+          <p>Tap right button to shield</p>
+        </div>
+        <div class="controls-section">
+          <h3>Keyboard</h3>
+          <p>↑ Arrow Up to jump</p>
+          <p>D to shield</p>
+          <p>R to restart</p>
+        </div>
+      </div>
+      <button id="start-btn">START GAME</button>
+    </div>
+    <div id="run-info"><p>Keyboard: ↑ Jump | D Shield | R Restart</p></div>
+    <div id="run-container">
+      <canvas id="run-canvas" width="800" height="600"></canvas>
+      <div id="run-controls">
+        <button id="jump-btn" class="btn">JUMP UP</button>
+        <button id="shield-btn" class="btn">SHIELD</button>
+      </div>
+    </div>
+  </body>
 </html>
